@@ -1,0 +1,13 @@
+12,12,22,12,12
+end
+exit
+12,GIANNIS,3,AL,Crew,Yes
+121,GIANNIS,20,GR,Crew,Yes
+122,KOSTAS,20,EGYPT,Passenger,No
+123,ELEANA,20,ALBANIA,Crew,Yes
+121,PPG,20,AL,Crew,Yes
+1,PPG,20,CR,Passenger,Yes
+1,John Doe,30,USA,Passenger,Yes
+1,PPG,20,ALBANIA,Crew,No
+2,KOSTAS,20,EGYPT,Passenger,Yes
+3,ELEANNA,20,BOSNIA,Crew,No

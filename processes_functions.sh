@@ -11,6 +11,7 @@ insert_data() {
         echo "[code],[fullname],[age],[country],[status (Passenger/Crew)],[rescued (Yes/No)]"
         echo "Type 'done' when you are finished entering data."
         
+        filename="passengers.csv"
         # Open or create passengers.csv to append new data
         if [[ ! -f passengers.csv ]]; then
             touch passengers.csv
@@ -32,8 +33,6 @@ insert_data() {
     else
         if [[ -f $filename ]]; then
             echo "Reading data from $filename..."
-            # Append file contents to passengers.csv
-            cat "$filename" >> passengers.csv
             echo "Data loaded successfully from $filename."
         else
             echo "File not found. Switching to manual data entry."
@@ -44,7 +43,7 @@ insert_data() {
 
 # Function to search for a passenger by name
 search_passenger() {
-    if [[ ! -f passengers.csv ]]; then
+    if [[ ! -f $filename ]]; then
         echo "Error: passengers.csv not found."
         return
     fi
@@ -52,7 +51,7 @@ search_passenger() {
     read -p "Enter first name or last name to search: " name
 
     # Use grep to find the matching rows
-    results=$(grep -i "$name" passengers.csv)
+    results=$(grep -i "$name" $filename)
 
     if [[ -z $results ]]; then
         echo "No passenger found with the name '$name'."
@@ -60,4 +59,7 @@ search_passenger() {
         echo "Passenger details:"
         echo "$results" | awk -F',' '{printf "Code: %s\nFull Name: %s\nAge: %s\nCountry: %s\nStatus: %s\nRescued: %s\n\n", $1, $2, $3, $4, $5, $6}'
     fi
+}
+update_passenger(){
+    
 }

@@ -12,6 +12,7 @@ insert_data() {
         echo "Type 'done' when you are finished entering data."
         
         filename="passengers.csv"
+        
         # Open or create passengers.csv to append new data
         if [[ ! -f passengers.csv ]]; then
             touch passengers.csv

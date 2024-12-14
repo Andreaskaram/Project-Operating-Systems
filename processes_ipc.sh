@@ -52,7 +52,7 @@ search_passenger() {
     read -p "Enter first name or last name to search: " name
 
     # Use grep to find the matching rows
-    results=$(grep -i "$name" $filename)
+    results=$(grep -i "\b$name\b" $filename)
 
     if [[ -z $results ]]; then
         echo "No passenger found with the name '$name'."
@@ -63,9 +63,8 @@ search_passenger() {
     fi
 }
 
-update_passenger(){
-
-    record=$(grep -i "$argname" $filename)
+update_passenger() {
+    record=$(grep -i "$argname" "$filename")
 
     if [[ -z $record ]]; then
         echo "No passenger found with the identifier '$argname'."
@@ -75,30 +74,40 @@ update_passenger(){
     echo "Passenger found:"
     echo "$record" | awk -F',' '{printf "Code: %s\nFull Name: %s\nAge: %s\nCountry: %s\nStatus: %s\nRescued: %s\n\n", $1, $2, $3, $4, $5, $6}'
 
-    case $field in
+    case $selectedField in
         fullname)
-            sed -i '' "/$identifier/s/^\([^,]*,\)[^,]*/\1$argnewdata/" passengers.csv
+            sed -i '' "/$argname/ s/\([^,]*,\)[^,]*/\1$argnewdata/" "$filename"
             ;;
         age)
-            sed -i '' "/$identifier/s/^\([^,]*,[^,]*,\)[^,]*/\1$argnewdata/" passengers.csv
+            sed -i '' "/$argname/ s/\([^,]*,[^,]*,\)[^,]*/\1$argnewdata/" "$filename"
             ;;
         country)
-            sed -i '' "/$identifier/s/^\([^,]*,[^,]*,[^,]*,\)[^,]*/\1$argnewdata/" passengers.csv
+            sed -i '' "/$argname/ s/\([^,]*,[^,]*,[^,]*,\)[^,]*/\1$argnewdata/" "$filename"
             ;;
         status)
-            sed -i '' "/$identifier/s/^\([^,]*,[^,]*,[^,]*,[^,]*,\)[^,]*/\1$argnewdata/" passengers.csv
+            sed -i '' "/$argname/ s/\([^,]*,[^,]*,[^,]*,[^,]*,\)[^,]*/\1$argnewdata/" "$filename"
             ;;
         rescued)
-            sed -i '' "/$identifier/s/^\([^,]*,[^,]*,[^,]*,[^,]*,[^,]*,\)[^,]*/\1$argnewdata/" passengers.csv
+            sed -i '' "/$argname/ s/\([^,]*,[^,]*,[^,]*,[^,]*,[^,]*,\)[^,]*/\1$argnewdata/" "$filename"
             ;;
         record)
-            sed -i '' "/$identifier/c$new_value" passengers.csv
+            if [[ $argnewdata =~  ^[0-9]+,.*,[0-9]+,.*,(Passenger|Crew),(Yes|No)$ ]]; then
+                sed -i '' "/$argname/c\\
+                $argnewdata" "$filename"
+                #echo $argnewdata
+            else
+                echo "Invalid format. Please try again."
+            fi
+            #sed -i '' "/$argname/c$new_value" "$filename"
+            #$argnewdata =~ ^[0-9]+,.*,[0-9]+,.*,(Passenger|Crew),(Yes|No)$
             ;;
         *)
             echo "Invalid field."
             return
             ;;
     esac
+
+    echo "Update complete."
 }
 
 argumentHandler(){
@@ -106,8 +115,10 @@ argumentHandler(){
     if [[ $# -eq 0 ]]; then
         return
     elif [[ $# -eq 1 && "$1" == "reports" ]]; then
+        argflag=1
         echo "Reports generated"
     else
+        argflag=2
         local inNewdataField=false
         # Iterate through the command-line arguments
         for arg in "$@"; do
@@ -127,6 +138,7 @@ argumentHandler(){
             else
             # After encountering a keyword like 'XXXXXX:', everything becomes newdata
             argnewdata="$argnewdata $arg"
+            argnewdata=$(echo "$argnewdata" | sed 's/^[ \t]*//;s/[ \t]*$//')
             fi
         done
         echo "name: $argname"
@@ -135,9 +147,9 @@ argumentHandler(){
     fi
 }
 
-
+argflag=0
 argumentHandler "$@"
-update_passenger
+
 
 # Display welcome message
 echo "======================================"
@@ -147,6 +159,10 @@ echo "======================================"
 # Prompt the user to insert data
 echo "Insert data into the application:"
 insert_data
+
+if [[ $argflag -eq 2 ]]; then
+    update_passenger
+fi
 
 # Provide options for further actions
 while true; do

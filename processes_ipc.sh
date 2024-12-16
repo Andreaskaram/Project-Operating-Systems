@@ -8,7 +8,7 @@ insert_data() {
         echo "No filename provided. Switching to manual data entry."
         # Call manual entry subroutine
         echo "Enter passenger details in the format:"
-        echo "[code],[fullname],[age],[country],[status (Passenger/Crew)],[rescued (Yes/No)]"
+        echo "[code],[fullname],[age],[country],[status (Passenger/Crew)],[rescued (Yes/No)] (No spaces allowed)"
         echo "Type 'done' when you are finished entering data."
         
         filename="passengers.csv"
@@ -33,10 +33,10 @@ insert_data() {
         echo "Data saved to passengers.csv"
     else
         if [[ -f $filename ]]; then
-            echo "Reading data from $filename..."
+            echo
             echo "Data loaded successfully from $filename."
         else
-            echo "File not found. Switching to manual data entry."
+            echo "File $filename not found. Please try again."
             insert_data # Recursive call for manual entry if file is invalid
         fi
     fi
@@ -45,17 +45,18 @@ insert_data() {
 # Function to search for a passenger by name
 search_passenger() {
     if [[ ! -f $filename ]]; then
-        echo "Error: passengers.csv not found."
+        echo "Error: $filename not found."
         return
     fi
 
-    read -p "Enter first name or last name to search: " name
+    read -p "Enter passenger code or fullname to search: " name
 
     # Use grep to find the matching rows
-    results=$(grep -i "\b$name\b" $filename)
+    #results=$(grep -i "\b$name\b" $filename)
+    results=$(awk -F',' -v name="$name" 'BEGIN {IGNORECASE = 1} ($1 == name || $2 == name) {print $0}' "$filename")
 
     if [[ -z $results ]]; then
-        echo "No passenger found with the name '$name'."
+        echo "No passenger found with the code/fullname '$name'!"
     else
         echo
         echo "Passenger details:"
@@ -64,42 +65,38 @@ search_passenger() {
 }
 
 update_passenger() {
-    record=$(grep -i "$argname" "$filename")
+    results=$(awk -F',' -v name="$argname" 'BEGIN {IGNORECASE = 1} ($1 == name || $2 == name) {print $0}' "$filename")
 
-    if [[ -z $record ]]; then
+    if [[ -z $results ]]; then
         echo "No passenger found with the identifier '$argname'."
         return
     fi
 
     echo "Passenger found:"
-    echo "$record" | awk -F',' '{printf "Code: %s\nFull Name: %s\nAge: %s\nCountry: %s\nStatus: %s\nRescued: %s\n\n", $1, $2, $3, $4, $5, $6}'
+    echo "$results" | awk -F',' '{printf "Code: %s\nFull Name: %s\nAge: %s\nCountry: %s\nStatus: %s\nRescued: %s\n\n", $1, $2, $3, $4, $5, $6}'
 
     case $selectedField in
         fullname)
-            sed -i '' "/$argname/ s/\([^,]*,\)[^,]*/\1$argnewdata/" "$filename"
+            sed -i '' "/^$argname,/ s/\([^,]*,\)[^,]*/\1$argnewdata/" "$filename"
             ;;
         age)
-            sed -i '' "/$argname/ s/\([^,]*,[^,]*,\)[^,]*/\1$argnewdata/" "$filename"
+            sed -i '' "/^$argname,/ s/\([^,]*,[^,]*,\)[^,]*/\1$argnewdata/" "$filename"
             ;;
         country)
-            sed -i '' "/$argname/ s/\([^,]*,[^,]*,[^,]*,\)[^,]*/\1$argnewdata/" "$filename"
+            sed -i '' "/^$argname,/ s/\([^,]*,[^,]*,[^,]*,\)[^,]*/\1$argnewdata/" "$filename"
             ;;
         status)
-            sed -i '' "/$argname/ s/\([^,]*,[^,]*,[^,]*,[^,]*,\)[^,]*/\1$argnewdata/" "$filename"
+            sed -i '' "/^$argname,/ s/\([^,]*,[^,]*,[^,]*,[^,]*,\)[^,]*/\1$argnewdata/" "$filename"
             ;;
         rescued)
-            sed -i '' "/$argname/ s/\([^,]*,[^,]*,[^,]*,[^,]*,[^,]*,\)[^,]*/\1$argnewdata/" "$filename"
+            sed -i '' "/^$argname,/ s/\([^,]*,[^,]*,[^,]*,[^,]*,[^,]*,\)[^,]*/\1$argnewdata/" "$filename"
             ;;
         record)
             if [[ $argnewdata =~  ^[0-9]+,.*,[0-9]+,.*,(Passenger|Crew),(Yes|No)$ ]]; then
-                sed -i '' "/$argname/c\\
-                $argnewdata" "$filename"
-                #echo $argnewdata
+                sed -i '' "/$argname/ s/.*/$argnewdata/" "$filename"
             else
-                echo "Invalid format. Please try again."
+                echo "Invalid format. Please try again. (No spaces allowed - Case sensitive)"
             fi
-            #sed -i '' "/$argname/c$new_value" "$filename"
-            #$argnewdata =~ ^[0-9]+,.*,[0-9]+,.*,(Passenger|Crew),(Yes|No)$
             ;;
         *)
             echo "Invalid field."

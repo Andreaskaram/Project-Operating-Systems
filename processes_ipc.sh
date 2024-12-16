@@ -144,6 +144,10 @@ argumentHandler(){
     fi
 }
 
+display_file(){
+    cat "$filename" | less
+}
+
 argflag=0
 argumentHandler "$@"
 
@@ -167,6 +171,7 @@ while true; do
     echo "Choose an option:"
     echo "1. Search for a passenger"
     echo "2. Exit"
+    echo "3. Print csv (space to show more - q to exit)"
     read -p "Enter your choice (1 or 2): " choice
 
     case $choice in
@@ -176,6 +181,9 @@ while true; do
     2)
         echo "Exiting the program."
         exit 0
+        ;;
+    3)
+        display_file
         ;;
     *)
         echo "Invalid choice. Please try again."

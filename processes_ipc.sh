@@ -148,6 +148,98 @@ display_file(){
     cat "$filename" | less
 }
 
+generate_reports() {
+    if [[ -n $filename && -f $filename ]]; then
+        file_to_process="$filename"
+    elif [[ -f passengers.csv ]]; then
+        file_to_process="passengers.csv"
+    else
+        echo "Error: Neither '$filename' nor 'passengers.csv' found."
+        return
+    fi
+
+    echo "Processing data from $file_to_process"
+
+    # Clear previous files to avoid appending data
+    > ages_0_18.txt
+    > ages_19_35.txt
+    > ages_36_50.txt
+    > ages_51_plus.txt
+    > percentages.txt
+    > avg.txt
+    > rescued.txt
+
+    # Generate ages_*.txt
+    awk -F'[;,]' '{
+        age = $3;
+        gsub(/^[ \t]+|[ \t]+$/, "", age);  # Remove leading and trailing whitespace
+        if (age ~ /^[0-9]+$/) {  # Check if age is a number
+            if (age <= 18) {
+                print $0 >> "ages_0_18.txt";
+            } else if (age >= 19 && age <= 35) {
+                print $0 >> "ages_19_35.txt";
+            } else if (age >= 36 && age <= 50) {
+                print $0 >> "ages_36_50.txt";
+            } else {
+                print $0 >> "ages_51_plus.txt";
+            }
+        }
+    }' "$file_to_process"
+
+    # Generate percentages.txt
+    awk -F'[;,]' '{
+        age = $3;
+        gsub(/^[ \t]+|[ \t]+$/, "", age);  # Remove leading and trailing whitespace
+        status = $6;
+        gsub(/^[ \t]+|[ \t]+$/, "", status);  # Remove leading and trailing whitespace
+        if (age ~ /^[0-9]+$/) {  # Check if age is a number
+            if (age <= 18) group = "0-18";
+            else if (age >= 19 && age <= 35) group = "19-35";
+            else if (age >= 36 && age <= 50) group = "36-50";
+            else group = "51+";
+
+            if (status ~ /^[Yy]es$/) rescued[group]++;
+            total[group]++;
+        }
+    } END {
+        for (g in total) {
+            if (total[g] > 0) {
+                printf "%s: %.2f%%\n", g, (rescued[g] / total[g]) * 100 > "percentages.txt";
+            } else {
+                printf "%s: 0.00%%\n", g > "percentages.txt";
+            }
+        }
+    }' "$file_to_process"
+
+    # Generate avg.txt
+    awk -F'[;,]' '{
+        category = $5;
+        gsub(/^[ \t]+|[ \t]+$/, "", category);  # Remove leading and trailing whitespace
+        age = $3;
+        gsub(/^[ \t]+|[ \t]+$/, "", age);  # Remove leading and trailing whitespace
+        if (age ~ /^[0-9]+$/) {  # Check if age is a number
+            ages[category] += age;
+            counts[category]++;
+        }
+    } END {
+        for (category in ages) {
+            if (counts[category] > 0) {
+                printf "%s: %.2f\n", category, ages[category] / counts[category] > "avg.txt";
+            }
+        }
+    }' "$file_to_process"
+
+    # Generate rescued.txt
+    grep -E '[;,][Yy]es$' "$file_to_process" > rescued.txt
+
+    echo "Reports generated: ages_0_18.txt, ages_19_35.txt, ages_36_50.txt, ages_51_plus.txt, percentages.txt, avg.txt, rescued.txt"
+}
+
+
+
+
+
+
 argflag=0
 argumentHandler "$@"
 
@@ -172,6 +264,7 @@ while true; do
     echo "1. Search for a passenger"
     echo "2. Exit"
     echo "3. Print csv (space to show more - q to exit)"
+    echo "4. Generate Reports  "
     read -p "Enter your choice (1 or 2): " choice
 
     case $choice in
@@ -185,10 +278,12 @@ while true; do
     3)
         display_file
         ;;
+    4)
+            generate_reports
+            ;;
     *)
         echo "Invalid choice. Please try again."
         ;;
     esac
 done
-
 

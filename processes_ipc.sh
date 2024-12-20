@@ -49,7 +49,11 @@ search_passenger() {
         return
     fi
 
-    read -p "Enter passenger code or fullname to search: " name
+    read -p "Enter passenger code or fullname to search (leave empty to skip):" name
+
+    if [[ -z $name ]]; then
+        return
+    fi
 
     # Use grep to find the matching rows
     #results=$(grep -i "\b$name\b" $filename)
@@ -113,8 +117,7 @@ argumentHandler(){
         return
     elif [[ $# -eq 1 && "$1" == "reports" ]]; then
         argflag=1
-        echo "Reports generated"
-    else
+    elif [[ $# -ge 3 ]]; then
         argflag=2
         local inNewdataField=false
         # Iterate through the command-line arguments
@@ -141,30 +144,28 @@ argumentHandler(){
         echo "name: $argname"
         echo "data field selected: $selectedField"
         echo $argnewdata
+    else
+        echo "Invalid arguments given"
     fi
 }
 
 display_file(){
+
+    read -p "Type anything to print data (spacebar to see more - q to Quit) or leave empty to skip: " choice
+
+    if [[ -z $choice ]]; then
+        return
+    fi
     cat "$filename" | less
 }
 
 generate_reports() {
-    if [[ -n $filename && -f $filename ]]; then
-        file_to_process="$filename"
-    elif [[ -f passengers.csv ]]; then
-        file_to_process="passengers.csv"
-    else
-        echo "Error: Neither '$filename' nor 'passengers.csv' found."
-        return
-    fi
 
-    echo "Processing data from $file_to_process"
+    #echo "Processing data from $file_to_process"
+    echo "Processing data from $filename"
 
     # Clear previous files to avoid appending data
-    > ages_0_18.txt
-    > ages_19_35.txt
-    > ages_36_50.txt
-    > ages_51_plus.txt
+    > ages.txt
     > percentages.txt
     > avg.txt
     > rescued.txt
@@ -175,16 +176,24 @@ generate_reports() {
         gsub(/^[ \t]+|[ \t]+$/, "", age);  # Remove leading and trailing whitespace
         if (age ~ /^[0-9]+$/) {  # Check if age is a number
             if (age <= 18) {
-                print $0 >> "ages_0_18.txt";
+                group = "ages 0-18";
             } else if (age >= 19 && age <= 35) {
-                print $0 >> "ages_19_35.txt";
+                group = "ages 19-35";
             } else if (age >= 36 && age <= 50) {
-                print $0 >> "ages_36_50.txt";
+                group = "ages 36-50";
             } else {
-                print $0 >> "ages_51_plus.txt";
+                group = "ages 51+";
             }
+            data[group] = data[group] $0 "\n";  # Append the line to the respective group
         }
-    }' "$file_to_process"
+    } END {
+        # Write grouped data to the output file
+        for (g in data) {
+            print g ":" > "ages.txt";
+            print data[g] >> "ages.txt";
+            print "" >> "ages.txt";  # Add a blank line between groups
+        }
+    }' "$filename"
 
     # Generate percentages.txt
     awk -F'[;,]' '{
@@ -202,14 +211,15 @@ generate_reports() {
             total[group]++;
         }
     } END {
+        printf "Percentages of rescued:\n" > "percentages.txt";
         for (g in total) {
             if (total[g] > 0) {
-                printf "%s: %.2f%%\n", g, (rescued[g] / total[g]) * 100 > "percentages.txt";
+                printf "ages %s: %.2f%%\n", g, (rescued[g] / total[g]) * 100 > "percentages.txt";
             } else {
                 printf "%s: 0.00%%\n", g > "percentages.txt";
             }
         }
-    }' "$file_to_process"
+    }' "$filename"
 
     # Generate avg.txt
     awk -F'[;,]' '{
@@ -222,19 +232,19 @@ generate_reports() {
             counts[category]++;
         }
     } END {
+        printf "Average age per passenger status:\n" > "avg.txt";
         for (category in ages) {
             if (counts[category] > 0) {
                 printf "%s: %.2f\n", category, ages[category] / counts[category] > "avg.txt";
             }
         }
-    }' "$file_to_process"
+    }' "$filename"
 
     # Generate rescued.txt
-    grep -E '[;,][Yy]es$' "$file_to_process" > rescued.txt
+    echo "Rescued passengers:" > rescued.txt
+    grep -E '[;,][Yy]es$' "$filename" >> rescued.txt
 
-    echo "Reports generated: ages_0_18.txt, ages_19_35.txt, ages_36_50.txt, ages_51_plus.txt, percentages.txt, avg.txt, rescued.txt"
 }
-
 
 
 
@@ -255,35 +265,11 @@ insert_data
 
 if [[ $argflag -eq 2 ]]; then
     update_passenger
+elif [[ $argflag -eq 1 ]]; then
+    generate_reports
+    echo "Reports generated"
 fi
 
-# Provide options for further actions
-while true; do
-    echo
-    echo "Choose an option:"
-    echo "1. Search for a passenger"
-    echo "2. Exit"
-    echo "3. Print csv (space to show more - q to exit)"
-    echo "4. Generate Reports  "
-    read -p "Enter your choice (1 or 2): " choice
+search_passenger
 
-    case $choice in
-    1)
-        search_passenger
-        ;;
-    2)
-        echo "Exiting the program."
-        exit 0
-        ;;
-    3)
-        display_file
-        ;;
-    4)
-            generate_reports
-            ;;
-    *)
-        echo "Invalid choice. Please try again."
-        ;;
-    esac
-done
-
+display_file

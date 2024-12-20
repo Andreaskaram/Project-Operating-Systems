@@ -1,2 +1,0 @@
-Crew: 46.72
-Passenger: 47.56

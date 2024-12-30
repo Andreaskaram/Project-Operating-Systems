@@ -2,18 +2,15 @@
 #define IPC_UTILS_H
 
 #include <semaphore.h>
-#include <sys/mman.h>
-#include <fcntl.h>
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
 
-#define SHARED_MEMORY_NAME "/boat_simulation"
-#define BOAT_SEM_NAME "/boat_sem"
-#define SEAT_SEM_NAME "/seat_sem"
-#define BOARDING_MUTEX_NAME "/boarding_mutex"
+// Δημιουργία και αρχικοποίηση σημαφόρων
+void init_semaphore(sem_t **sem, const char *name, int value);
+void destroy_semaphore(sem_t *sem, const char *name);
 
-typedef struct {
-    int remaining_seats;
-    int total_passengers;
-    int boarded_passengers;
-} SharedMemory;
+// Βοηθητική συνάρτηση για ασφαλή έξοδο από το πρόγραμμα
+void handle_error(const char *msg);
 
 #endif // IPC_UTILS_H

@@ -1,0 +1,5 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/Users/gianniskotsalos/Documents/GitHub/Project-Operating-Systems/memorymanageent'
+relocations:     []
+...

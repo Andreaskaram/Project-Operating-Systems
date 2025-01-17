@@ -18,6 +18,9 @@ void rr();
 #define PROC_RUNNING	2
 #define PROC_EXITED	3
 
+int active_procs = 0;
+int numOfCpus = 1;
+
 typedef struct proc_desc {
 	struct proc_desc *next;
 	char name[80];
@@ -117,7 +120,6 @@ int main(int argc,char **argv)
 	FILE *input;
 	char exec[80];
 	int c;
-	int numOfCpus = 1;
 	proc_t *proc;
 
 	if (argc == 1) {
@@ -196,37 +198,51 @@ int main(int argc,char **argv)
 }
 
 
-void fcfs()
-{
-	proc_t *proc;
-	int pid;
-	int status;
+void fcfs() {
+    proc_t *proc;
+    int status;
+	proc_t *first_proc = global_q.first;
+    while (active_procs > 0 || !proc_queue_empty(&global_q)) {
+        // Start processes if CPUs are available
+        while (active_procs < numOfCpus && (proc = proc_rq_dequeue()) != NULL) {
+            if (proc->status == PROC_NEW) {
+                proc->t_start = proc_gettime();
+                int pid = fork();
+                if (pid == -1) {
+                    err_exit("fork failed!");
+                }
+                if (pid == 0) {
+                    printf("executing %s\n", proc->name);
+                    execl(proc->name, proc->name, NULL);
+                } else {
+                    proc->pid = pid;
+                    proc->status = PROC_RUNNING;
+                    active_procs++;
+                }
+            }
+        }
 
-	while ((proc=proc_rq_dequeue()) != NULL) {
-		// printf("Dequeued process with name %s\n", proc->name);
-		if (proc->status == PROC_NEW) {
-			proc->t_start = proc_gettime();
-			pid = fork();
-			if (pid == -1) {
-				err_exit("fork failed!");
-			}
-			if (pid == 0) {
-				printf("executing %s\n", proc->name);
-				execl(proc->name, proc->name, NULL);
-			} else {
-				proc->pid = pid;
-				proc->status = PROC_RUNNING;
-				pid = waitpid(proc->pid, &status, 0);
-				proc->status = PROC_EXITED;
-				if (pid < 0) err_exit("waitpid failed");
-				proc->t_end = proc_gettime();
-				printf("PID %d - CMD: %s\n", pid, proc->name);
-				printf("\tElapsed time = %.2lf secs\n", proc->t_end-proc->t_submission);
-				printf("\tExecution time = %.2lf secs\n", proc->t_end-proc->t_start);
-				printf("\tWorkload time = %.2lf secs\n", proc->t_end-global_t);
-			}
-		}
-	}
+        // Wait for any process to finish
+        int finished_pid = waitpid(-1, &status, 0);
+        if (finished_pid > 0) {
+            active_procs--;
+            //proc_t *finished_proc = global_q.first;
+			proc_t *finished_proc = first_proc;
+            while (finished_proc) {
+				printf("fnshdPID: %d - structpid: %d - structName: %s\n",finished_pid, finished_proc->pid, finished_proc->name);
+                if (finished_proc->pid == finished_pid) {
+                    finished_proc->status = PROC_EXITED;
+                    finished_proc->t_end = proc_gettime();
+                    printf("PID %d - CMD: %s\n", finished_proc->pid, finished_proc->name);
+                    printf("\tElapsed time = %.2lf secs\n", finished_proc->t_end - finished_proc->t_submission);
+                    printf("\tExecution time = %.2lf secs\n", finished_proc->t_end - finished_proc->t_start);
+                    printf("\tWorkload time = %.2lf secs\n", finished_proc->t_end - global_t);
+					break;
+                }
+                finished_proc = finished_proc->next;
+            }
+        }
+    }
 }
 
 

@@ -7,6 +7,7 @@
 #include <time.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #define MAX_LINE_LENGTH 80
 
@@ -20,7 +21,9 @@ void rr();
 
 int active_procs = 0;
 int numOfCpus = 1;
+int remprocs = 0;
 struct single_queue running_q;  // Track running processes
+pthread_mutex_t queue_mutex;
 
 typedef struct proc_desc {
     struct proc_desc *next;
@@ -36,6 +39,12 @@ struct single_queue {
     proc_t *last;
     long members;
 };
+
+// Define a structure to pass arguments to threads
+typedef struct thread_args {
+    struct single_queue *global_q;
+    struct timespec req, rem;
+} thread_args_t;
 
 struct single_queue global_q;
 
@@ -141,6 +150,7 @@ int main(int argc, char **argv) {
         }
 
         proc_to_rq_end(proc, &global_q);
+        remprocs++;
     }
 
     global_t = proc_gettime();
@@ -229,99 +239,156 @@ void fcfs() {
 }
 
 
-void sigchld_handler(int signo, siginfo_t *info, void *context)
-{
-	printf("child %d exited\n", info->si_pid);
-	if (running_proc == NULL) {
-		printf("warning: running_proc==NULL\n");
-	} else if (running_proc->pid == info->si_pid) {
-		running_proc->status = PROC_EXITED;
-		proc_t *proc = running_proc;
-		proc->t_end = proc_gettime();
-		printf("PID %d - CMD: %s\n", proc->pid, proc->name);
-		printf("\tElapsed time = %.2lf secs\n", proc->t_end-proc->t_submission);
-		printf("\tExecution time = %.2lf secs\n", proc->t_end-proc->t_start);
-		printf("\tWorkload time = %.2lf secs\n", proc->t_end-global_t);
+void sigchld_handler(int signo, siginfo_t *info, void *context) {
+    pid_t finished_pid = info->si_pid; // Get the PID of the finished process
+    printf("Child process with PID %d has exited\n", finished_pid);
+    --remprocs;
+    printf("Processes remaining: %d\n", remprocs);
+    //pthread_mutex_lock(&queue_mutex);
+    //print_queue(&running_q);
+    //pthread_mutex_unlock(&queue_mutex);
 
-	} else {
-		printf("warning: running %d exited %d\n", running_proc->pid, info->si_pid);
-	}
+    /*if (finished_pid > 0) {
+            active_procs--;
+
+            proc_t *finished_proc = running_q.first;
+            proc_t *prev_proc = NULL;
+
+            while (finished_proc) {
+                if (finished_proc->pid == finished_pid) {
+                    finished_proc->status = PROC_EXITED;
+                    finished_proc->t_end = proc_gettime();
+                    printf("PID %d - CMD: %s\n", finished_proc->pid, finished_proc->name);
+                    printf("\tElapsed time = %.2lf secs\n", finished_proc->t_end - finished_proc->t_submission);
+                    printf("\tExecution time = %.2lf secs\n", finished_proc->t_end - finished_proc->t_start);
+                    printf("\tWorkload time = %.2lf secs\n", finished_proc->t_end - global_t);
+
+                    if (prev_proc) {
+                        prev_proc->next = finished_proc->next;
+                    } else {
+                        running_q.first = finished_proc->next;
+                    }
+
+                    if (finished_proc == running_q.last) {
+                        running_q.last = prev_proc;
+                    }
+
+                    free(finished_proc);
+                    break;
+                }
+                prev_proc = finished_proc;
+                finished_proc = finished_proc->next;
+            }
+
+            if (running_q.first == NULL) {
+                running_q.last = NULL;
+            }
+        }*/
+        if(remprocs==0){
+            exit(0);
+        }
+
 }
 
-void rr()
-{
-	struct sigaction sig_act;
-	proc_t *proc;
-	int pid;
-	struct timespec req, rem;
 
-	req.tv_sec = quantum / 1000;
-	req.tv_nsec = (quantum % 1000)*1000000;
+// Function for thread execution
+void *rr_thread_func(void *args) {
+    struct sigaction sig_act;
+    thread_args_t *targs = (thread_args_t *)args;
+    struct single_queue *global_q = targs->global_q;
+    struct timespec req = targs->req, rem = targs->rem;
+    proc_queue_init(&running_q);
 
-	printf("tv_sec = %ld\n", req.tv_sec);
-	printf("tv_nsec = %ld\n", req.tv_nsec);
+    proc_t *proc;
+    int pid;
 
-	sigemptyset(&sig_act.sa_mask);
+    sigemptyset(&sig_act.sa_mask);
 	sig_act.sa_handler = 0;
 	sig_act.sa_flags = SA_SIGINFO | SA_NOCLDSTOP;
 	sig_act.sa_sigaction = sigchld_handler;
 	sigaction (SIGCHLD,&sig_act,NULL);
 
-	while ((proc=proc_rq_dequeue()) != NULL) {
-		// printf("Dequeue process with name %s and pid %d\n", proc->name, proc->pid);
-		if (proc->status == PROC_NEW) {
-			proc->t_start = proc_gettime();
-			pid = fork();
-			if (pid == -1) {
-				err_exit("fork failed!");
-			}
-			if (pid == 0) {
-				printf("executing %s\n", proc->name);
-				execl(proc->name, proc->name, NULL);
-				printf("%s has exited\n", proc->name);
-			}
-			else {
-				proc->pid = pid;
-				running_proc = proc;
-				proc->status = PROC_RUNNING;
+    while (1) {
+        pthread_mutex_lock(&queue_mutex);
 
-				nanosleep(&req, &rem);
-				if (proc->status == PROC_RUNNING) {
-					kill(proc->pid, SIGSTOP);
-					proc->status = PROC_STOPPED;
-					printf("%s has stopped executing\n", proc->name);
-					proc_to_rq_end(proc, &global_q);
-				}
-				else if (proc->status == PROC_EXITED) {
-				}
+        proc = proc_rq_dequeue(); // Access the global queue
+        if (!proc) {
+            pthread_mutex_unlock(&queue_mutex);
+            printf("Queue is empty, thread exiting.\n");
+            break; // No more processes, exit the thread
+        }
 
-			}
-		}
-		else if (proc->status == PROC_STOPPED) {
-			proc->status = PROC_RUNNING;
-			printf("%s has resumed executing\n", proc->name);
-			running_proc = proc;
-			kill(proc->pid, SIGCONT);
+        pthread_mutex_unlock(&queue_mutex);
 
-			nanosleep(&req, &rem);
-			if (proc->status == PROC_RUNNING) {
-				kill(proc->pid, SIGSTOP);
-				proc_to_rq_end(proc,&global_q);
-				proc->status = PROC_STOPPED;
-				printf("%s has stopped executing\n", proc->name);
-			}
-			else if (proc->status == PROC_EXITED) {
-			}
+        if (proc->status == PROC_NEW) {
+            proc->t_start = proc_gettime();
+            pid = fork();
+            if (pid == -1) {
+                err_exit("fork failed!");
+            }
+            if (pid == 0) {
+                printf("executing %s\n", proc->name);
+                execl(proc->name, proc->name, NULL);
+            } else {
+                proc->pid = pid;
+                proc->status = PROC_RUNNING;
+                //pthread_mutex_lock(&queue_mutex);
+                proc_to_rq_end(proc, &running_q);
+                //pthread_mutex_unlock(&queue_mutex);
+                
 
-		}
-		else if (proc->status == PROC_EXITED) {
-			printf("process has exited\n");
-		}
-		else if (proc->status == PROC_RUNNING) {
-			printf("WARNING: Already running process\n");
-		}
-		else {
-			err_exit("Unknown process status");
-		}
-	}
+                nanosleep(&req, &rem);
+
+                if (proc->status == PROC_RUNNING) {
+                    kill(proc->pid, SIGSTOP);
+                    proc->status = PROC_STOPPED;
+
+                    pthread_mutex_lock(&queue_mutex);
+                    proc_to_rq_end(proc, global_q); // Move back to global queue
+                    pthread_mutex_unlock(&queue_mutex);
+                }
+            }
+        } else if (proc->status == PROC_STOPPED) {
+            proc->status = PROC_RUNNING;
+            kill(proc->pid, SIGCONT);
+
+            nanosleep(&req, &rem);
+
+            if (proc->status == PROC_RUNNING) {
+                kill(proc->pid, SIGSTOP);
+
+                pthread_mutex_lock(&queue_mutex);
+                proc_to_rq_end(proc, global_q);
+                pthread_mutex_unlock(&queue_mutex);
+
+                proc->status = PROC_STOPPED;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+// Main RR function with threading
+void rr() {
+    pthread_t threads[numOfCpus];
+    thread_args_t targs;
+
+    targs.global_q = &global_q;
+    targs.req.tv_sec = quantum / 1000;
+    targs.req.tv_nsec = (quantum % 1000) * 1000000;
+
+    pthread_mutex_init(&queue_mutex, NULL); // Initialize mutex
+
+    // Create threads
+    for (int i = 0; i < numOfCpus; i++) {
+        pthread_create(&threads[i], NULL, rr_thread_func, (void *)&targs);
+    }
+
+    // Wait for threads to finish
+    for (int i = 0; i < numOfCpus; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    pthread_mutex_destroy(&queue_mutex); // Destroy mutex
 }

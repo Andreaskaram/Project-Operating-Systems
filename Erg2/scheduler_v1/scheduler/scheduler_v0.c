@@ -10,6 +10,7 @@
 #include <pthread.h>
 
 #define MAX_LINE_LENGTH 80
+#define MAX_PROCESSES 100
 
 void fcfs();
 void rr();
@@ -22,6 +23,7 @@ void rr();
 int active_procs = 0;
 int numOfCpus = 1;
 int remprocs = 0;
+int process_count = 0;
 struct single_queue running_q;  // Track running processes
 pthread_mutex_t queue_mutex;
 
@@ -47,8 +49,18 @@ typedef struct thread_args {
 } thread_args_t;
 
 struct single_queue global_q;
+proc_t *all_processes[MAX_PROCESSES];  // Global array to hold pointers to all processes
 
 #define proc_queue_empty(q) ((q)->first == NULL)
+
+void add_to_all_processes(proc_t *proc) {
+    if (process_count < MAX_PROCESSES) {
+        all_processes[process_count++] = proc;
+    } else {
+        printf("Error: Maximum number of processes exceeded.\n");
+        exit(1);
+    }
+}
 
 void proc_queue_init(register struct single_queue *q) {
     q->first = q->last = NULL;
@@ -150,6 +162,7 @@ int main(int argc, char **argv) {
         }
 
         proc_to_rq_end(proc, &global_q);
+        add_to_all_processes(proc);
         remprocs++;
     }
 
@@ -244,18 +257,15 @@ void sigchld_handler(int signo, siginfo_t *info, void *context) {
     printf("Child process with PID %d has exited\n", finished_pid);
     --remprocs;
     printf("Processes remaining: %d\n", remprocs);
-    //pthread_mutex_lock(&queue_mutex);
-    //print_queue(&running_q);
-    //pthread_mutex_unlock(&queue_mutex);
 
-    /*if (finished_pid > 0) {
+    if (finished_pid > 0) {
             active_procs--;
 
-            proc_t *finished_proc = running_q.first;
             proc_t *prev_proc = NULL;
 
-            while (finished_proc) {
-                if (finished_proc->pid == finished_pid) {
+            for(int i = 0; i < process_count; i++) {
+                if (all_processes[i]->pid == finished_pid) {
+                    proc_t *finished_proc = all_processes[i];
                     finished_proc->status = PROC_EXITED;
                     finished_proc->t_end = proc_gettime();
                     printf("PID %d - CMD: %s\n", finished_proc->pid, finished_proc->name);
@@ -263,30 +273,14 @@ void sigchld_handler(int signo, siginfo_t *info, void *context) {
                     printf("\tExecution time = %.2lf secs\n", finished_proc->t_end - finished_proc->t_start);
                     printf("\tWorkload time = %.2lf secs\n", finished_proc->t_end - global_t);
 
-                    if (prev_proc) {
-                        prev_proc->next = finished_proc->next;
-                    } else {
-                        running_q.first = finished_proc->next;
-                    }
-
-                    if (finished_proc == running_q.last) {
-                        running_q.last = prev_proc;
-                    }
-
                     free(finished_proc);
                     break;
                 }
-                prev_proc = finished_proc;
-                finished_proc = finished_proc->next;
             }
-
-            if (running_q.first == NULL) {
-                running_q.last = NULL;
-            }
-        }*/
-        if(remprocs==0){
-            exit(0);
         }
+        /*if(remprocs==0){
+            exit(0);
+        }*/
 
 }
 
@@ -297,7 +291,6 @@ void *rr_thread_func(void *args) {
     thread_args_t *targs = (thread_args_t *)args;
     struct single_queue *global_q = targs->global_q;
     struct timespec req = targs->req, rem = targs->rem;
-    proc_queue_init(&running_q);
 
     proc_t *proc;
     int pid;
@@ -314,7 +307,7 @@ void *rr_thread_func(void *args) {
         proc = proc_rq_dequeue(); // Access the global queue
         if (!proc) {
             pthread_mutex_unlock(&queue_mutex);
-            printf("Queue is empty, thread exiting.\n");
+            //printf("Queue is empty, thread exiting.\n");
             break; // No more processes, exit the thread
         }
 
@@ -332,9 +325,6 @@ void *rr_thread_func(void *args) {
             } else {
                 proc->pid = pid;
                 proc->status = PROC_RUNNING;
-                //pthread_mutex_lock(&queue_mutex);
-                proc_to_rq_end(proc, &running_q);
-                //pthread_mutex_unlock(&queue_mutex);
                 
 
                 nanosleep(&req, &rem);

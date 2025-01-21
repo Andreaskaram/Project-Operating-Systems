@@ -105,6 +105,7 @@ double proc_gettime() {
 
 #define FCFS 0
 #define RR   1
+#define RRAFF 2
 
 int policy = FCFS;
 int quantum = 100; /* ms */
@@ -122,23 +123,32 @@ int main(int argc, char **argv) {
     int c;
     proc_t *proc;
 
-    if (argc < 2) {
+    if (argc == 1) {
         err_exit("invalid usage");
-    }
-
-    if (!strcmp(argv[1], "FCFS")) {
-        policy = FCFS;
-        input = fopen(argv[2], "r");
-        if (argc > 3) numOfCpus = atoi(argv[3]);
-        if (input == NULL) err_exit("invalid input file name");
-    } else if (!strcmp(argv[1], "RR")) {
-        policy = RR;
-        quantum = atoi(argv[2]);
-        input = fopen(argv[3], "r");
-        if (argc > 4) numOfCpus = atoi(argv[4]);
-        if (input == NULL) err_exit("invalid input file name");
-    } else {
-        err_exit("invalid usage");
+    }else if(argc == 2){
+        input = fopen(argv[1],"r");
+		if (input == NULL) err_exit("invalid input file name");
+    }else{
+        if (!strcmp(argv[1], "FCFS")) {
+            policy = FCFS;
+            input = fopen(argv[2], "r");
+            if (argc > 3) numOfCpus = atoi(argv[3]);
+            if (input == NULL) err_exit("invalid input file name");
+        } else if (!strcmp(argv[1], "RR")) {
+            policy = RR;
+            quantum = atoi(argv[2]);
+            input = fopen(argv[3], "r");
+            if (argc > 4) numOfCpus = atoi(argv[4]);
+            if (input == NULL) err_exit("invalid input file name");
+        } else if (!strcmp(argv[1], "RRAFF")) {
+            policy = RRAFF;
+            quantum = atoi(argv[2]);
+            input = fopen(argv[3], "r");
+            if (argc > 4) numOfCpus = atoi(argv[4]);
+            if (input == NULL) err_exit("invalid input file name");
+        } else {
+            err_exit("invalid usage");
+        }
     }
 
     /* Read input file */
@@ -174,6 +184,10 @@ int main(int argc, char **argv) {
 
         case RR:
             rr();
+            break;
+
+        case RRAFF:
+            printf("RR-AFF is not utilized\n");
             break;
 
         default:

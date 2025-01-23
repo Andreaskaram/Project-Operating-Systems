@@ -8,6 +8,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <errno.h>
+
 
 #define MAX_LINE_LENGTH 80
 #define MAX_PROCESSES 100
@@ -61,7 +63,6 @@ void add_to_all_processes(proc_t *proc) {
         exit(1);
     }
 }
-
 void proc_queue_init(register struct single_queue *q) {
     q->first = q->last = NULL;
     q->members = 0;
@@ -75,6 +76,7 @@ void proc_to_rq_end(register proc_t *proc, struct single_queue *q) {
         q->last = proc;
         proc->next = NULL;
     }
+    q->members++;  // Track the number of processes
 }
 
 proc_t *proc_rq_dequeue() {
@@ -85,6 +87,7 @@ proc_t *proc_rq_dequeue() {
 
     global_q.first = proc->next;
     proc->next = NULL;
+    global_q.members--;  // Update member count
 
     return proc;
 }
@@ -95,6 +98,16 @@ void print_queue(struct single_queue *q) {
         printf("proc: [name:%s pid:%d]\n", proc->name, proc->pid);
         proc = proc->next;
     }
+}
+
+void debug_queue(const char *queue_name, struct single_queue *queue) {
+    printf("[DEBUG] %s state: ", queue_name);
+    proc_t *temp = queue->first;
+    while (temp) {
+        printf("[PID: %d, Status: %d, ReqCores: %d] -> ", temp->pid, temp->status, temp->reqCores);
+        temp = temp->next;
+    }
+    printf("NULL\n");
 }
 
 double proc_gettime() {
@@ -187,120 +200,124 @@ int main(int argc, char **argv) {
 }
 
 void fcfs() {
-    proc_t *proc;
     int status;
-    int available_cpus = numOfCpus;  // Track the number of available CPUs
+    int available_cpus = numOfCpus;
     proc_queue_init(&running_q);
 
     while (active_procs > 0 || !proc_queue_empty(&global_q)) {
-        // Check the global queue for new processes to schedule
-        while (active_procs < numOfCpus && (proc = proc_rq_dequeue()) != NULL) {
-            if (proc->status == PROC_NEW && proc->reqCores <= available_cpus) {
-                proc->t_start = proc_gettime();
+        printf("[DEBUG] Starting scheduling iteration...\n");
+        debug_queue("Global Queue", &global_q);
+        debug_queue("Running Queue", &running_q);
+
+        proc_t *current_proc = global_q.first;
+        proc_t *prev_proc = NULL;
+
+        while (current_proc) {
+            proc_t *next_proc = current_proc->next;
+
+            // Only schedule process if it fits within available CPUs
+            if (current_proc->status == PROC_NEW && current_proc->reqCores <= available_cpus) {
+                printf("[DEBUG] Scheduling process %s (PID: %d, ReqCores: %d)\n",
+                       current_proc->name, current_proc->pid, current_proc->reqCores);
+
+                // Remove process from global_q
+                if (prev_proc) {
+                    prev_proc->next = next_proc;
+                } else {
+                    global_q.first = next_proc;
+                }
+                if (next_proc == NULL) {
+                    global_q.last = prev_proc;
+                }
+
+                // Start the process
+                current_proc->t_start = proc_gettime();
                 int pid = fork();
                 if (pid == -1) {
-                    err_exit("fork failed!");
+                    perror("[ERROR] Fork failed");
+                    exit(EXIT_FAILURE);
                 }
                 if (pid == 0) {
-                    printf("executing %s\n", proc->name);
-                    execl(proc->name, proc->name, NULL);
+                    printf("[DEBUG] Executing process %s\n", current_proc->name);
+                    execl(current_proc->name, current_proc->name, NULL);
+                    perror("[ERROR] execl failed");
+                    _exit(EXIT_FAILURE);
                 } else {
-                    proc->pid = pid;
-                    proc->status = PROC_RUNNING;
+                    current_proc->pid = pid;
+                    current_proc->status = PROC_RUNNING;
                     active_procs++;
-                    available_cpus -= proc->reqCores;  // Decrease available CPUs
-                    proc_to_rq_end(proc, &running_q);
-                    printf("Process %d, %s begins, requested %d CPUs\n", proc->pid, proc->name, proc->reqCores);
+                    available_cpus -= current_proc->reqCores; // Update available CPUs
+                    proc_to_rq_end(current_proc, &running_q); // Add to running queue
+                    printf("[DEBUG] Process %d begins, requested %d CPUs\n", pid, current_proc->reqCores);
                 }
+
+                // Do not advance prev_proc when we remove current_proc
+                current_proc = next_proc;
+            } else {
+                prev_proc = current_proc;
+                current_proc = next_proc;
             }
         }
 
         // Wait for any process to finish
         int finished_pid = waitpid(-1, &status, 0);
         if (finished_pid > 0) {
+            printf("[DEBUG] Process %d finished execution\n", finished_pid);
             active_procs--;
 
-            // Remove the finished process from the running queue
             proc_t *finished_proc = running_q.first;
-            proc_t *prev_proc = NULL;
+            proc_t *prev_running_proc = NULL;
 
             while (finished_proc) {
                 if (finished_proc->pid == finished_pid) {
                     finished_proc->status = PROC_EXITED;
                     finished_proc->t_end = proc_gettime();
-                    available_cpus += finished_proc->reqCores;  // Restore CPUs to the pool
-                    printf("PID %d - CMD: %s\n", finished_proc->pid, finished_proc->name);
+                    available_cpus += finished_proc->reqCores; // Release CPUs
+
+                    printf("PID %d - CMD: %s\n", finished_pid, finished_proc->name);
                     printf("\tElapsed time = %.2lf secs\n", finished_proc->t_end - finished_proc->t_submission);
                     printf("\tExecution time = %.2lf secs\n", finished_proc->t_end - finished_proc->t_start);
                     printf("\tWorkload time = %.2lf secs\n", finished_proc->t_end - global_t);
 
                     // Remove from running queue
-                    if (prev_proc) {
-                        prev_proc->next = finished_proc->next;
+                    if (prev_running_proc) {
+                        prev_running_proc->next = finished_proc->next;
                     } else {
                         running_q.first = finished_proc->next;
                     }
-
-                    if (finished_proc == running_q.last) {
-                        running_q.last = prev_proc;
+                    if (finished_proc->next == NULL) {
+                        running_q.last = prev_running_proc;
                     }
 
+                    // Free the finished process
                     free(finished_proc);
-                    break;
+
+                    break; // Exit the loop after removing the finished process
                 }
-                prev_proc = finished_proc;
+                prev_running_proc = finished_proc;
                 finished_proc = finished_proc->next;
             }
-
-            if (running_q.first == NULL) {
-                running_q.last = NULL;
-            }
-
-            // Recheck the global queue for any remaining processes
-            proc_t *current_proc = global_q.first;
-            while (current_proc != NULL) {
-            printf("Checking process %s, status: %d, requested CPUs: %d, available CPUs: %d\n", 
-            current_proc->name, current_proc->status, current_proc->reqCores, available_cpus);
-
-    if (current_proc->status == PROC_NEW && current_proc->reqCores <= available_cpus) {
-        // Move the process to the running queue
-        proc_to_rq_end(current_proc, &running_q);
-        
-        // Mark the process as PROC_RUNNING
-        current_proc->status = PROC_RUNNING;
-        
-        // Adjust the available CPUs
-        available_cpus -= current_proc->reqCores;
-
-        // Now remove it from the global queue
-        if (current_proc == global_q.first) {
-            global_q.first = current_proc->next;
-        } else {
-            proc_t *prev_proc = global_q.first;
-            while (prev_proc->next != current_proc) {
-                prev_proc = prev_proc->next;
-            }
-            prev_proc->next = current_proc->next;
+        } else if (finished_pid < 0 && errno != EINTR) {
+            perror("[ERROR] waitpid failed");
+            exit(EXIT_FAILURE);
         }
 
-        // If it's the last process in the global queue, update the 'last' pointer
-        if (current_proc == global_q.last) {
-            global_q.last = NULL;
-        }
-
-        // Set the next pointer of the current process to NULL to avoid dangling pointers
-        current_proc->next = NULL;
-
-        // Debugging output
-        printf("Process %d moved to running queue, requested %d CPUs\n", current_proc->pid, current_proc->reqCores);
+        printf("[DEBUG] Ending scheduling iteration...\n");
     }
-    
-    current_proc = current_proc->next;
+
+    printf("[DEBUG] All processes finished. Exiting scheduler.\n");
 }
 
-        }
-    }
-}
+
+
+
+
+
+
+
+
+
+
 
 
 void sigchld_handler(int signo, siginfo_t *info, void *context) {

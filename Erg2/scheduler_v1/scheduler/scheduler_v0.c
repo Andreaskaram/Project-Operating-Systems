@@ -14,6 +14,7 @@
 
 void fcfs();
 void rr();
+void rraff();
 
 #define PROC_NEW    0
 #define PROC_STOPPED 1
@@ -33,6 +34,7 @@ typedef struct proc_desc {
     int pid;
     int status;
     int reqCores;
+    pthread_t threadId;
     double t_submission, t_start, t_end;
 } proc_t;
 
@@ -187,7 +189,7 @@ int main(int argc, char **argv) {
             break;
 
         case RRAFF:
-            printf("RR-AFF is not utilized\n");
+            rraff();
             break;
 
         default:
@@ -387,6 +389,126 @@ void rr() {
     // Create threads
     for (int i = 0; i < numOfCpus; i++) {
         pthread_create(&threads[i], NULL, rr_thread_func, (void *)&targs);
+    }
+
+    // Wait for threads to finish
+    for (int i = 0; i < numOfCpus; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    pthread_mutex_destroy(&queue_mutex); // Destroy mutex
+}
+
+
+
+
+void *rraff_thread_func(void *args) {
+    struct sigaction sig_act;
+    thread_args_t *targs = (thread_args_t *)args;
+    struct single_queue *global_q = targs->global_q;
+    struct timespec req = targs->req, rem = targs->rem;
+
+    proc_t *proc;
+    proc_t *tmpproc;
+    int pid;
+
+    sigemptyset(&sig_act.sa_mask);
+	sig_act.sa_handler = 0;
+	sig_act.sa_flags = SA_SIGINFO | SA_NOCLDSTOP;
+	sig_act.sa_sigaction = sigchld_handler;
+	sigaction (SIGCHLD,&sig_act,NULL);
+
+    while (1) {
+        pthread_mutex_lock(&queue_mutex);
+
+        //tmpproc = global_q->first;
+        int whileflag = 0;
+        while(whileflag == 0){
+            //pthread_mutex_lock(&queue_mutex);
+            proc = proc_rq_dequeue();
+            //pthread_mutex_unlock(&queue_mutex);
+            if(proc == NULL) break;
+            if(proc->status == PROC_NEW || pthread_equal(proc->threadId,pthread_self())){
+                whileflag = 1;
+            }else{
+                //pthread_mutex_lock(&queue_mutex);
+                proc_to_rq_end(proc, &global_q);
+                //pthread_mutex_unlock(&queue_mutex);
+            }
+        }
+
+        
+        if (!proc) {
+            pthread_mutex_unlock(&queue_mutex);
+            //printf("Queue is empty, thread exiting.\n");
+            break; // No more processes, exit the thread
+        }
+
+        pthread_mutex_unlock(&queue_mutex);
+
+        if (proc->status == PROC_NEW) {
+            proc->t_start = proc_gettime();
+            pid = fork();
+            if (pid == -1) {
+                err_exit("fork failed!");
+            }
+            if (pid == 0) {
+                printf("executing %s\n", proc->name);
+                execl(proc->name, proc->name, NULL);
+            } else {
+                proc->pid = pid;
+                proc->threadId = pthread_self();
+                proc->status = PROC_RUNNING;
+                printf("process %s running by thread %lu\n", proc->name,(unsigned long)proc->threadId);
+                
+
+                nanosleep(&req, &rem);
+
+                if (proc->status == PROC_RUNNING) {
+                    kill(proc->pid, SIGSTOP);
+                    proc->status = PROC_STOPPED;
+
+                    pthread_mutex_lock(&queue_mutex);
+                    proc_to_rq_end(proc, global_q); // Move back to global queue
+                    pthread_mutex_unlock(&queue_mutex);
+                }
+            }
+        } else if (proc->status == PROC_STOPPED) {
+            proc->status = PROC_RUNNING;
+            kill(proc->pid, SIGCONT);
+            printf("process %s running by thread %lu\n", proc->name,(unsigned long)proc->threadId);
+
+            nanosleep(&req, &rem);
+
+            if (proc->status == PROC_RUNNING) {
+                kill(proc->pid, SIGSTOP);
+
+                pthread_mutex_lock(&queue_mutex);
+                proc_to_rq_end(proc, global_q);
+                pthread_mutex_unlock(&queue_mutex);
+
+                proc->status = PROC_STOPPED;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+// Main RR function with threading
+void rraff() {
+    pthread_t threads[numOfCpus];
+    thread_args_t targs;
+
+    targs.global_q = &global_q;
+    targs.req.tv_sec = quantum / 1000;
+    targs.req.tv_nsec = (quantum % 1000) * 1000000;
+
+    pthread_mutex_init(&queue_mutex, NULL); // Initialize mutex
+
+    // Create threads
+    for (int i = 0; i < numOfCpus; i++) {
+        pthread_create(&threads[i], NULL, rraff_thread_func, (void *)&targs);
     }
 
     // Wait for threads to finish

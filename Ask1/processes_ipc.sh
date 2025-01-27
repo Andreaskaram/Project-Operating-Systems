@@ -6,14 +6,13 @@ insert_data() {
 
     if [[ -z $filename ]]; then
         echo "No filename provided. Switching to manual data entry."
-        # Call manual entry subroutine
         echo "Enter passenger details in the format:"
         echo "[code],[fullname],[age],[country],[status (Passenger/Crew)],[rescued (Yes/No)] (No spaces allowed)"
         echo "Type 'done' when you are finished entering data."
         
         filename="passengers.csv"
         
-        # Open or create passengers.csv to append new data
+        #Open or create passengers.csv
         if [[ ! -f passengers.csv ]]; then
             touch passengers.csv
         fi
@@ -23,7 +22,7 @@ insert_data() {
             if [[ $data == "done" ]]; then
                 break
             fi
-            # Validate the data format
+            #validate data format
             if [[ $data =~ ^[0-9]+,.*,[0-9]+,.*,(Passenger|Crew),(Yes|No)$ ]]; then
                 echo "$data" >> passengers.csv
             else
@@ -37,7 +36,7 @@ insert_data() {
             echo "Data loaded successfully from $filename."
         else
             echo "File $filename not found. Please try again."
-            insert_data # Recursive call for manual entry if file is invalid
+            insert_data #Recursive call for manual entry if file is invalid
         fi
     fi
 }

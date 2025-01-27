@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include "ipc_utils.h"
 
-#define MAX_PASSENGERS 100
+#define MAX_PASSENGERS 1000
 
 void *passenger(void *arg);  
 

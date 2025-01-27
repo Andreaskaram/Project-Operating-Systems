@@ -57,19 +57,19 @@ search_passenger() {
 
     # Use grep to find the matching rows
     #results=$(grep -i "\b$name\b" $filename)
-    results=$(awk -F',' -v name="$name" 'BEGIN {IGNORECASE = 1} ($1 == name || $2 == name) {print $0}' "$filename")
+    results=$(awk -F'[;,]' -v name="$name" 'BEGIN {IGNORECASE = 1} ($1 == name || $2 == name) {print $0}' "$filename")
 
     if [[ -z $results ]]; then
         echo "No passenger found with the code/fullname '$name'!"
     else
         echo
         echo "Passenger details:"
-        echo "$results" | awk -F',' '{printf "Code: %s\nFull Name: %s\nAge: %s\nCountry: %s\nStatus: %s\nRescued: %s\n\n", $1, $2, $3, $4, $5, $6}'
+        echo "$results" | awk -F'[;,]' '{printf "Code: %s\nFull Name: %s\nAge: %s\nCountry: %s\nStatus: %s\nRescued: %s\n\n", $1, $2, $3, $4, $5, $6}'
     fi
 }
 
 update_passenger() {
-    results=$(awk -F',' -v name="$argname" 'BEGIN {IGNORECASE = 1} ($1 == name || $2 == name) {print $0}' "$filename")
+    results=$(awk -F'[;,]' -v name="$argname" 'BEGIN {IGNORECASE = 1} ($1 == name || $2 == name) {print $0}' "$filename")
 
     if [[ -z $results ]]; then
         echo "No passenger found with the identifier '$argname'."
@@ -77,23 +77,23 @@ update_passenger() {
     fi
 
     echo "Passenger found:"
-    echo "$results" | awk -F',' '{printf "Code: %s\nFull Name: %s\nAge: %s\nCountry: %s\nStatus: %s\nRescued: %s\n\n", $1, $2, $3, $4, $5, $6}'
+    echo "$results" | awk -F'[;,]' '{printf "Code: %s\nFull Name: %s\nAge: %s\nCountry: %s\nStatus: %s\nRescued: %s\n\n", $1, $2, $3, $4, $5, $6}'
 
     case $selectedField in
         fullname)
-            sed -i '' "/^$argname,/ s/\([^,]*,\)[^,]*/\1$argnewdata/" "$filename"
+            sed -i '' "/^$argname[;,]/ s/\([^;,]*[;,]\)[^;,]*/\1$argnewdata/" "$filename"
             ;;
         age)
-            sed -i '' "/^$argname,/ s/\([^,]*,[^,]*,\)[^,]*/\1$argnewdata/" "$filename"
+            sed -i '' "/^$argname[;,]/ s/\([^;,]*[;,][^;,]*[;,]\)[^;,]*/\1$argnewdata/" "$filename"
             ;;
         country)
-            sed -i '' "/^$argname,/ s/\([^,]*,[^,]*,[^,]*,\)[^,]*/\1$argnewdata/" "$filename"
+            sed -i '' "/^$argname[;,]/ s/\([^;,]*[;,][^;,]*[;,][^;,]*[;,]\)[^;,]*/\1$argnewdata/" "$filename"
             ;;
         status)
-            sed -i '' "/^$argname,/ s/\([^,]*,[^,]*,[^,]*,[^,]*,\)[^,]*/\1$argnewdata/" "$filename"
+            sed -i '' "/^$argname[;,]/ s/\([^;,]*[;,][^;,]*[;,][^;,]*[;,][^;,]*[;,]\)[^;,]*/\1$argnewdata/" "$filename"
             ;;
         rescued)
-            sed -i '' "/^$argname,/ s/\([^,]*,[^,]*,[^,]*,[^,]*,[^,]*,\)[^,]*/\1$argnewdata/" "$filename"
+            sed -i '' "/^$argname[;,]/ s/\([^;,]*[;,][^;,]*[;,][^;,]*[;,][^;,]*[;,][^;,]*[;,]\)[^;,]*/\1$argnewdata/" "$filename"
             ;;
         record)
             if [[ $argnewdata =~  ^[0-9]+,.*,[0-9]+,.*,(Passenger|Crew),(Yes|No)$ ]]; then

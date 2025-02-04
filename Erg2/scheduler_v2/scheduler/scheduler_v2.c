@@ -205,9 +205,9 @@ void fcfs() {
     proc_queue_init(&running_q);
 
     while (active_procs > 0 || !proc_queue_empty(&global_q)) {
-        printf("[DEBUG] Starting scheduling iteration...\n");
-        debug_queue("Global Queue", &global_q);
-        debug_queue("Running Queue", &running_q);
+        //printf("[DEBUG] Starting scheduling iteration...\n");
+        //debug_queue("Global Queue", &global_q);
+        //debug_queue("Running Queue", &running_q);
 
         proc_t *current_proc = global_q.first;
         proc_t *prev_proc = NULL;
@@ -217,8 +217,8 @@ void fcfs() {
 
             // Only schedule process if it fits within available CPUs
             if (current_proc->status == PROC_NEW && current_proc->reqCores <= available_cpus) {
-                printf("[DEBUG] Scheduling process %s (PID: %d, ReqCores: %d)\n",
-                       current_proc->name, current_proc->pid, current_proc->reqCores);
+                //printf("[DEBUG] Scheduling process %s (PID: %d, ReqCores: %d)\n",
+                       //current_proc->name, current_proc->pid, current_proc->reqCores);
 
                 // Remove process from global_q
                 if (prev_proc) {
@@ -238,7 +238,7 @@ void fcfs() {
                     exit(EXIT_FAILURE);
                 }
                 if (pid == 0) {
-                    printf("[DEBUG] Executing process %s\n", current_proc->name);
+                    //printf("[DEBUG] Executing process %s\n", current_proc->name);
                     execl(current_proc->name, current_proc->name, NULL);
                     perror("[ERROR] execl failed");
                     _exit(EXIT_FAILURE);
@@ -248,7 +248,7 @@ void fcfs() {
                     active_procs++;
                     available_cpus -= current_proc->reqCores; // Update available CPUs
                     proc_to_rq_end(current_proc, &running_q); // Add to running queue
-                    printf("[DEBUG] Process %d begins, requested %d CPUs\n", pid, current_proc->reqCores);
+                    //printf("[DEBUG] Process %d begins, requested %d CPUs\n", pid, current_proc->reqCores);
                 }
 
                 // Do not advance prev_proc when we remove current_proc
@@ -262,7 +262,7 @@ void fcfs() {
         // Wait for any process to finish
         int finished_pid = waitpid(-1, &status, 0);
         if (finished_pid > 0) {
-            printf("[DEBUG] Process %d finished execution\n", finished_pid);
+            //printf("[DEBUG] Process %d finished execution\n", finished_pid);
             active_procs--;
 
             proc_t *finished_proc = running_q.first;
@@ -302,10 +302,10 @@ void fcfs() {
             exit(EXIT_FAILURE);
         }
 
-        printf("[DEBUG] Ending scheduling iteration...\n");
+        //printf("[DEBUG] Ending scheduling iteration...\n");
     }
 
-    printf("[DEBUG] All processes finished. Exiting scheduler.\n");
+    //printf("[DEBUG] All processes finished. Exiting scheduler.\n");
 }
 
 
